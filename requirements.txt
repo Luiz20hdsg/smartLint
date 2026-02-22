@@ -1,0 +1,6 @@
+# SmartLint has no external Python dependencies.
+# It only requires the solc compiler to be installed on the system.
+#
+# Install solc:
+#   brew install solidity    (macOS)
+#   pip install solc-select  (cross-platform)
