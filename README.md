@@ -35,8 +35,7 @@ SmartLint is a research tool that analyzes Solidity smart contracts by operating
 ### Installation
 
 ```bash
-# Anonymous mirror for SBLP 2026 double-blind review:
-# https://anonymous.4open.science/r/smartLint-6B76
+# Clone the repository (URL provided in the paper footnote)
 cd smartLint
 
 # Install solc (macOS)
