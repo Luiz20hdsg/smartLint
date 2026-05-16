@@ -6,6 +6,7 @@ utilities for traversing the AST to find relevant nodes.
 """
 
 import json
+import re
 import subprocess
 import os
 import shutil
@@ -13,25 +14,61 @@ import tempfile
 from typing import Optional
 
 
-def _find_solc() -> str:
-    """Find the solc binary. Check common locations."""
-    # 1. Check PATH
+# Default per-major-version solc binaries SmartLint will dispatch to,
+# enabling analysis of legacy contracts (e.g., the SmartBugs corpus,
+# which is dominated by ^0.4.x sources).
+_DEFAULT_SOLC_VERSIONS = ["0.4.26", "0.5.17", "0.6.12", "0.7.6", "0.8.20", "0.8.28"]
+
+
+def _solc_select_artifact(version: str) -> Optional[str]:
+    path = os.path.expanduser(f"~/.solc-select/artifacts/solc-{version}/solc-{version}")
+    if os.path.isfile(path) and os.access(path, os.X_OK):
+        return path
+    return None
+
+
+def _detect_pragma(file_path: str) -> Optional[str]:
+    """Read the file and return the major.minor solc version implied by the pragma."""
+    try:
+        with open(file_path, "r", errors="ignore") as f:
+            src = f.read()
+    except OSError:
+        return None
+    m = re.search(r"pragma\s+solidity\s+[\^>=~\s]*(\d+)\.(\d+)(?:\.(\d+))?", src)
+    if not m:
+        return None
+    return f"{m.group(1)}.{m.group(2)}"
+
+
+def _find_solc(file_path: Optional[str] = None) -> str:
+    """Pick a solc binary, preferring one matching the file's pragma if available."""
+    if file_path:
+        major_minor = _detect_pragma(file_path)
+        if major_minor:
+            for v in _DEFAULT_SOLC_VERSIONS:
+                if v.startswith(major_minor + "."):
+                    art = _solc_select_artifact(v)
+                    if art:
+                        return art
+
+    # Fallback: PATH
     solc_path = shutil.which("solc")
     if solc_path:
         return solc_path
 
-    # 2. Check common locations
+    # Fallback: common locations
     candidates = [
         "/tmp/smartlint-bin/solc",
         "/usr/local/bin/solc",
-        os.path.expanduser("~/.solc-select/artifacts/solc-0.8.28/solc-0.8.28"),
-        os.path.expanduser("~/.solc-select/artifacts/solc-0.8.20/solc-0.8.20"),
+    ] + [
+        os.path.expanduser(f"~/.solc-select/artifacts/solc-{v}/solc-{v}")
+        for v in reversed(_DEFAULT_SOLC_VERSIONS)
     ]
     for candidate in candidates:
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
 
-    return "solc"  # Fall back to hoping it's in PATH
+    return "solc"
 
 
 class ASTNode:
@@ -278,7 +315,7 @@ def compile_and_get_ast(file_path: str) -> tuple[Optional[dict], Optional[str], 
         source_code = f.read()
 
     try:
-        solc_bin = _find_solc()
+        solc_bin = _find_solc(file_path)
         result = subprocess.run(
             [solc_bin, "--ast-compact-json", file_path],
             capture_output=True,
@@ -330,7 +367,7 @@ def compile_and_get_ast_combined(file_path: str) -> tuple[Optional[dict], Option
         source_code = f.read()
 
     try:
-        solc_bin = _find_solc()
+        solc_bin = _find_solc(file_path)
         result = subprocess.run(
             [solc_bin, "--combined-json", "ast", file_path],
             capture_output=True,
@@ -412,19 +449,16 @@ def parse_ast(file_path: str) -> tuple[Optional[ASTNode], Optional[str], str]:
     """
     Parse a Solidity file and return its AST as an ASTNode tree.
 
-    Tries --combined-json first (more reliable), falls back to --ast-compact-json.
-
-    Returns:
-        (root_node, error_message, source_code)
+    `--ast-compact-json` is tried first because it returns the modern
+    `nodeType`/`nodes` schema across all solc majors (0.4.x–0.8.x).
+    `--combined-json` is the fallback.
     """
-    # Try combined JSON first
-    ast_dict, error, source_code = compile_and_get_ast_combined(file_path)
+    ast_dict, error, source_code = compile_and_get_ast(file_path)
 
     if ast_dict is not None:
         return ASTNode(ast_dict, source_code), None, source_code
 
-    # Fall back to --ast-compact-json
-    ast_dict2, error2, source_code2 = compile_and_get_ast(file_path)
+    ast_dict2, error2, source_code2 = compile_and_get_ast_combined(file_path)
     if ast_dict2 is not None:
         return ASTNode(ast_dict2, source_code2), None, source_code2
 

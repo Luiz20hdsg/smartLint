@@ -122,6 +122,17 @@ class CEIChecker(BaseChecker):
                 if inner.member_name in self.EXTERNAL_CALL_MEMBERS:
                     return True
 
+        # Pattern (Solidity <=0.6.x): addr.call.value(x)() or addr.call.gas(g)()
+        # Expression chain: FunctionCall -> MemberAccess(value/gas) -> MemberAccess(call/...)
+        if expr.node_type == "FunctionCall":
+            inner_expr = expr.expression
+            if inner_expr and inner_expr.node_type == "MemberAccess" \
+                    and inner_expr.member_name in {"value", "gas"}:
+                base = inner_expr.expression
+                if base and base.node_type == "MemberAccess" \
+                        and base.member_name in self.EXTERNAL_CALL_MEMBERS:
+                    return True
+
         # Check for calls to external contract functions
         # (type string contains "contract" and it's an external call)
         if expr.node_type == "MemberAccess":

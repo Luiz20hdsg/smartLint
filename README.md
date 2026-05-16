@@ -16,7 +16,9 @@ SmartLint is a research tool that analyzes Solidity smart contracts by operating
 | **Access Control** | Unprotected sensitive operations (`selfdestruct`, `delegatecall`, etc.) | Capability-based access — authority as owned object | CRITICAL/HIGH |
 | **Unchecked Call** | Low-level calls with unchecked return values | Mandatory error handling — abort semantics | MEDIUM |
 
-- **Zero external dependencies** — only requires Python 3 and `solc`
+- **Zero runtime dependencies** — only requires Python 3 and `solc`
+- **Supports Solidity 0.4.x through 0.8.x** via pragma-driven version dispatch
+- **Recognizes both modern and legacy call syntaxes** (`addr.call{value: x}("")` and `addr.call.value(x)()`)
 - **~1,500 lines** of clean, auditable Python code
 - **Two output formats:** colored CLI text and structured JSON
 - **Move annotations** on every finding for educational value
